@@ -1798,6 +1798,8 @@ font:800 10px/1.45 Arial,sans-serif;letter-spacing:.04em}
   // 正式公開時は、このAPP_CONFIGだけを変更します。
   const APP_CONFIG = Object.freeze({
     environment: 'demo',
+  // P0: proposal site is display-only unless explicitly reviewed for production.
+  enableLiveWebReception: false,
     workerApiBase: 'https://ksh-line-demo-api.dpromstk2000.workers.dev',
     shopCode: 'street_house_kitsuki',
     contactEmail: 'dpromstk2000@gmail.com',
@@ -1817,6 +1819,7 @@ font:800 10px/1.45 Arial,sans-serif;letter-spacing:.04em}
   const CONTACT_EMAIL = APP_CONFIG.contactEmail;
   const LINE_URL = APP_CONFIG.lineUrl;
   const IS_DEMO = APP_CONFIG.environment === 'demo';
+  const LIVE_RECEPTION_ENABLED = APP_CONFIG.environment === 'production' && APP_CONFIG.enableLiveWebReception === true;
   const DRAFT_KEY = 'wanganEstimateDraftV4';
   const REQUEST_ID_KEY = 'wanganCurrentRequestIdV1';
   const LAST_SUBMISSION_KEY = 'wanganLastSubmissionV1';
@@ -2354,9 +2357,9 @@ font:800 10px/1.45 Arial,sans-serif;letter-spacing:.04em}
   const applyEnvironmentDisplay = () => {
     environmentChip.textContent = IS_DEMO ? 'DEMO' : 'PRODUCTION';
     environmentChip.classList.toggle('production', !IS_DEMO);
-    environmentLabel.textContent = IS_DEMO ? 'DPRO DEMO連動' : 'DPRO正式運用連動';
+    environmentLabel.textContent = IS_DEMO ? '制作サンプル（送信なし）' : 'DPRO正式運用連動';
     environmentText.textContent = IS_DEMO
-      ? 'デモ環境の店舗管理画面へWEB受付を登録します。'
+      ? '制作サンプルのため受付送信・端末への入力保存は行いません。個人情報を入力しないでください。'
       : '店舗の正式なDPRO管理画面へWEB受付を登録します。';
   };
 
@@ -2369,6 +2372,11 @@ font:800 10px/1.45 Arial,sans-serif;letter-spacing:.04em}
   };
 
   const checkDproConnection = async () => {
+    if (!LIVE_RECEPTION_ENABLED) {
+      apiConnected = false;
+      setApiStatus('failed', '制作サンプル｜受付送信・入力保存は無効です');
+      return;
+    }
     const guardErrors = applyProductionGuard();
     if (guardErrors.length) { apiConnected=false; setApiStatus('failed','正式公開設定エラー｜送信停止中'); return; }
     setApiStatus('checking', `${environmentName()} 接続確認中`);
@@ -2629,8 +2637,8 @@ font:800 10px/1.45 Arial,sans-serif;letter-spacing:.04em}
     nextButton.hidden = currentStep === 3;
     const normalConfirmation = currentStep === 3 && !submissionCompleted;
     copyButton.hidden = !normalConfirmation;
-    mailButton.hidden = !normalConfirmation;
-    sendButton.hidden = !normalConfirmation;
+    mailButton.hidden = !normalConfirmation || !LIVE_RECEPTION_ENABLED;
+    sendButton.hidden = !normalConfirmation || !LIVE_RECEPTION_ENABLED;
     successPhone.hidden = !submissionCompleted;
     downloadReceiptButton.hidden = !submissionCompleted;
     newRequestButton.hidden = !submissionCompleted;
@@ -2686,6 +2694,7 @@ font:800 10px/1.45 Arial,sans-serif;letter-spacing:.04em}
   };
 
   const getOrCreateRequestId = () => {
+    if (!LIVE_RECEPTION_ENABLED) return 'demo-not-submitted';
     let requestId = localStorage.getItem(REQUEST_ID_KEY);
     if (!requestId) {
       requestId = crypto.randomUUID
@@ -2774,6 +2783,10 @@ font:800 10px/1.45 Arial,sans-serif;letter-spacing:.04em}
   };
 
   const saveDraft = () => {
+    if (!LIVE_RECEPTION_ENABLED) {
+      draftStatus.textContent = '制作サンプル：端末へ入力内容を保存しません';
+      return;
+    }
     const data = getFormData();
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
@@ -2784,6 +2797,11 @@ font:800 10px/1.45 Arial,sans-serif;letter-spacing:.04em}
   };
 
   const loadDraft = () => {
+    if (!LIVE_RECEPTION_ENABLED) {
+      try { localStorage.removeItem(DRAFT_KEY); localStorage.removeItem(REQUEST_ID_KEY); } catch (_) {}
+      draftStatus.textContent = '制作サンプル：入力内容は保存されません';
+      return;
+    }
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
@@ -2868,6 +2886,12 @@ font:800 10px/1.45 Arial,sans-serif;letter-spacing:.04em}
 
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
+    // Client-side safety UX, not a substitute for server-side authorization.
+    if (!LIVE_RECEPTION_ENABLED) {
+      showApiFailure('制作サンプルです。受付送信は行いません。実際の個人情報を入力しないでください。');
+      showToast('制作サンプルでは受付送信しません。');
+      return;
+    }
     if (isSubmitting) return;
 
     const step1Okay = validateStep(1);
